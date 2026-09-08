@@ -67,6 +67,26 @@ import { execFile as execFileCb } from 'node:child_process';
  *  Claude desktop chats get a deep link straight to the conversation; anything
  *  else just activates its host app. `open` only — no osascript, so no
  *  Automation prompt for the daemon process. */
+function appSessionIdForCliSession(cliSessionId: string): string | undefined {
+  const root = join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions');
+  const stack = [root];
+  while (stack.length) {
+    const dir = stack.pop()!;
+    let entries: string[] = [];
+    try { entries = readdirSync(dir); } catch { continue; }
+    for (const name of entries) {
+      const full = join(dir, name);
+      try {
+        if (statSync(full).isDirectory()) { stack.push(full); continue; }
+        if (!name.startsWith('local_') || !name.endsWith('.json')) continue;
+        const j = JSON.parse(readFileSync(full, 'utf8')) as { sessionId?: string; cliSessionId?: string };
+        if (j.cliSessionId === cliSessionId && typeof j.sessionId === 'string') return j.sessionId;
+      } catch { /* skip unreadable */ }
+    }
+  }
+  return undefined;
+}
+
 async function openSessionWindow(sessionId: string, obs?: { tty?: string; appName?: string }): Promise<void> {
   const run = (args: string[]) => new Promise<void>((resolve) => {
     execFileCb('open', args, { timeout: 5_000 }, () => resolve());
@@ -79,7 +99,11 @@ async function openSessionWindow(sessionId: string, obs?: { tty?: string; appNam
       await run(['-a', app === 'iterm2' ? 'iTerm' : 'Terminal']);
       return;
     }
-    await run([`claude://code/continue?session=${encodeURIComponent(uuid)}&source=agentdeck`]);
+    // The Claude desktop app's deep link wants ITS session id (local_…), not
+    // the CLI session uuid. The app keeps one JSON per session under
+    // ~/Library/Application Support/Claude/claude-code-sessions/ with both ids.
+    const appId = appSessionIdForCliSession(uuid);
+    if (appId) await run([`claude://code/continue?session=${encodeURIComponent(appId)}&source=agentdeck`]);
     await run(['-a', 'Claude']);
     return;
   }
@@ -313,7 +337,7 @@ import {
 import type { UsageEvent } from './types.js';
 import { resolveRelayedUsageEvent } from './relayed-usage.js';
 import { CARD_FEED_PATH, CARD_OUTBOX_PATH, FONT_PACK_PATH, GLANCE_FRAME_PATH, LEARNING_PACK_PATH, type CardFeedResponse, type SessionInfo, type OutboxPushRequest } from '@agentdeck/shared';
-import { readFileSync, statSync, writeFileSync, appendFileSync } from 'fs';
+import { readFileSync, statSync, writeFileSync, appendFileSync, readdirSync } from 'fs';
 import { readFile, rm } from 'fs/promises';
 import { tmpdir, networkInterfaces, type NetworkInterfaceInfo } from 'os';
 import { join } from 'path';
