@@ -60,6 +60,37 @@ import {
 } from './observed-steering.js';
 import { resolveSessionIdPrefix } from './session-id-resolve.js';
 import { injectObservedSelection, injectObservedText } from './observed-inject.js';
+import { execFile as execFileCb } from 'node:child_process';
+
+/** MASH fork: bring the window that hosts a session to the front.
+ *  Claude desktop chats get a deep link straight to the conversation; anything
+ *  else just activates its host app. `open` only — no osascript, so no
+ *  Automation prompt for the daemon process. */
+async function openSessionWindow(sessionId: string, obs?: { tty?: string; appName?: string }): Promise<void> {
+  const run = (args: string[]) => new Promise<void>((resolve) => {
+    execFileCb('open', args, { timeout: 5_000 }, () => resolve());
+  });
+  const app = (obs?.appName ?? '').toLowerCase();
+  if (sessionId.startsWith('observed:claude:')) {
+    const uuid = sessionId.slice('observed:claude:'.length);
+    if (obs?.tty && app !== 'claude') {
+      await run(['-a', app === 'iterm2' ? 'iTerm' : 'Terminal']);
+      return;
+    }
+    await run([`claude://code/continue?session=${encodeURIComponent(uuid)}&source=agentdeck`]);
+    await run(['-a', 'Claude']);
+    return;
+  }
+  if (sessionId.startsWith('observed:codex:')) {
+    if (obs?.tty && app !== 'chatgpt') {
+      await run(['-a', app === 'iterm2' ? 'iTerm' : 'Terminal']);
+      return;
+    }
+    await run(['-a', 'ChatGPT']);
+    return;
+  }
+  if (app) await run(['-a', app]);
+}
 import {
   setSerialCommandSink, setSerialVoiceSink, setSerialQuiesceCheck, sendSerialJson,
   serialPortConnected, serialPortCapabilities, serialPortBoard,
@@ -5563,6 +5594,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // working-tree delta with an independent model. Valid for every session
     // type — no agent control involved. Result: WS events + badge fields +
     // HTML report opened in the browser (this daemon's "popup" tier).
+    // MASH fork: OPEN key — raise the window/chat that hosts a session.
+    if ((cmd.type as string) === 'open_session') {
+      const sessionId = resolveDeviceSessionId((cmd as any).sessionId);
+      if (!sessionId) return;
+      const obs = passiveSessionObserver.collect([])
+        .find((s) => s.id === sessionId) as { tty?: string; appName?: string } | undefined;
+      void openSessionWindow(sessionId, obs);
+      return;
+    }
     if (cmd.type === 'review_run') {
       const sessionId = resolveDeviceSessionId((cmd as any).sessionId);
       if (!sessionId) return;

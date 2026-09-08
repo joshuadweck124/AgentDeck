@@ -174,7 +174,8 @@ const CC_PRESET_DEFS: Array<Omit<PresetAction, 'iconSvg'> & { iconSvg?: string; 
   { label: 'GO ON', iconSvg: GO_ON_ICON_SVG, color: '#1e3a2f', textColor: '#22c55e', prompt: 'go on' },
   { label: 'REVIEW', iconSvg: REVIEW_ICON_SVG, color: '#1e293b', textColor: '#93c5fd', localAction: 'review_run' },
   { label: 'COMMIT', iconSvg: COMMIT_ICON_SVG, color: '#1e293b', textColor: '#22c55e', prompt: '/commit' },
-  { label: 'CLEAR', iconSvg: CLEAR_ICON_SVG, color: '#1e293b', textColor: '#94a3b8', prompt: '/clear' },
+  // MASH fork: OPEN replaces CLEAR — bring this session's window/chat to the front.
+  { label: 'OPEN', iconSvg: CLEAR_ICON_SVG, color: '#1e293b', textColor: '#fbbf24', localAction: 'open_session' },
 ];
 
 // Host push-to-talk. The deck contributes the button; the daemon records on
@@ -621,7 +622,7 @@ export class SessionSlotManager {
 
   /** Handle button press. Returns action to take. */
   handleSlotPress(slot: number, layout?: DeckLayout): {
-    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'switch-model' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'open-apps' | 'none';
+    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'switch-model' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'open-apps' | 'open-session' | 'none';
     sessionId?: string;
     sessionPort?: number;
     optionIndex?: number;
@@ -664,6 +665,9 @@ export class SessionSlotManager {
         }
         if (config.preset?.localAction === 'review_run') {
           return { action: 'review-run' };
+        }
+        if (config.preset?.localAction === 'open_session') {
+          return { action: 'open-session', sessionId: this._focusedSessionId ?? undefined };
         }
         // Hold-to-talk: the key-down begins capture; the action class pairs it
         // with a key-up that ends (or cancels) it.

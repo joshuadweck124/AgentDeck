@@ -6,9 +6,10 @@ import streamDeck, { action, SingletonAction, type KeyDownEvent, type WillAppear
 import { renderBackButton } from '../renderers/session-slot-renderer.js';
 import { svgToDataUrl } from '../renderers/button-renderer.js';
 import { dlog } from '../log.js';
+import type { JsonValue } from '@elgato/utils';
 
 interface NavKeySettings {
-  [key: string]: unknown;
+  [key: string]: JsonValue;
   /** Page index of the bundled profile to jump to (default 0 = sessions). */
   page?: number;
 }

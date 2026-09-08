@@ -210,6 +210,13 @@ initSessionSlots((result) => {
       break;
     }
 
+    case 'open-session': {
+      // MASH fork: ask the daemon to raise this session's window / chat.
+      const focused = getFocusedSession();
+      if (focused) connMgr.send({ type: 'open_session', sessionId: focused.id } as any);
+      break;
+    }
+
     case 'review-run': {
       // Independent on-demand eval — a daemon-level command (the daemon
       // resolves the session's work product + judge), never a PTY prompt.
