@@ -325,7 +325,8 @@ describe('SessionSlotManager detail layout', () => {
 
     const configs = Array.from({ length: SD_PLUS_LAYOUT.keyCount }, (_, i) =>
       manager.getSlotConfig(i, SD_PLUS_LAYOUT));
-    expect(configs.filter((config) => config.type === 'preset')).toHaveLength(0);
+    // MASH fork: OPEN (raise window) and GO ON (queued nudge) are the only presets mid-turn.
+    expect(configs.filter((config) => config.type === 'preset').map((c) => c.preset?.label)).toEqual(['OPEN', 'GO ON']);
     expect(configs.filter((config) => config.type === 'stop')).toHaveLength(1);
   });
 
@@ -387,8 +388,9 @@ describe('SessionSlotManager detail layout', () => {
 
       expect(modelSlots).toHaveLength(0);
       expect(configs.filter((config) => config.type === 'status' && config.label === 'WORKING')).toHaveLength(1);
-      expect(configs.filter((config) => config.type === 'preset')).toHaveLength(0);
-      expect(configs.filter((config) => config.type === 'empty')).toHaveLength(layout.keyCount - 3);
+      // MASH fork: OPEN is offered; GO ON is Claude-only.
+      expect(configs.filter((config) => config.type === 'preset').map((c) => c.preset?.label)).toEqual(['OPEN']);
+      expect(configs.filter((config) => config.type === 'empty')).toHaveLength(layout.keyCount - 4);
     }
   });
 
@@ -808,8 +810,8 @@ describe('VOICE hold-to-talk key', () => {
     const configs = allSlots(mgr, SD_PLUS_LAYOUT);
     const voice = configs.find(c => c.type === 'preset' && c.preset?.localAction === 'voice_ptt');
     expect(voice?.preset?.label).toBe('VOICE');
-    // The honest "control in terminal" tile survives the insertion.
-    expect(configs.some(c => c.type === 'status' && c.label === 'OBSERVED')).toBe(true);
+    // MASH fork: OPEN leads the idle row; the "control in terminal" card is gone.
+    expect(configs.some(c => c.type === 'preset' && c.preset?.localAction === 'open_session')).toBe(true);
   });
 });
 

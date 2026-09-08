@@ -170,6 +170,12 @@ function buildSuggestPreset(prompt: string): PresetAction {
 
 // REVIEW routes to the independent on-demand eval (review_run — daemon-side
 // judge, no agent control), so it is uniform across every session type.
+// MASH fork: keys offered on observed (hook-only) sessions — the kind every
+// session on Josh's deck is. OPEN raises the session's window; GO ON queues a
+// nudge delivered at the end of the current turn.
+const OPEN_PRESET: PresetAction = { label: 'OPEN', iconSvg: CLEAR_ICON_SVG, color: '#1e293b', textColor: '#fbbf24', localAction: 'open_session' };
+const GO_ON_PRESET: PresetAction = { label: 'GO ON', iconSvg: GO_ON_ICON_SVG, color: '#1e3a2f', textColor: '#22c55e', prompt: 'go on' };
+
 const CC_PRESET_DEFS: Array<Omit<PresetAction, 'iconSvg'> & { iconSvg?: string; dynamicIcon?: 'model' }> = [
   { label: 'GO ON', iconSvg: GO_ON_ICON_SVG, color: '#1e3a2f', textColor: '#22c55e', prompt: 'go on' },
   { label: 'REVIEW', iconSvg: REVIEW_ICON_SVG, color: '#1e293b', textColor: '#93c5fd', localAction: 'review_run' },
@@ -1047,7 +1053,8 @@ export class SessionSlotManager {
         // cannot mismatch the terminal prompt.
         if (idx === 0) return { type: 'option', option: { label: 'Allow', shortcut: 'y', index: 0 }, optionIndex: 0 };
         if (idx === 1) return { type: 'option', option: { label: 'Deny', shortcut: 'n', index: 1 }, optionIndex: 1 };
-        return this.awaitingStatusCard(session, idx - 2, false);
+        if (idx === 2) return { type: 'preset', preset: OPEN_PRESET };
+        return this.awaitingStatusCard(session, idx - 3, false);
       }
       // AskUserQuestion. A hook-observed session has no response channel of its
       // own, but the daemon may still be able to deliver the answer: by typing
@@ -1102,18 +1109,20 @@ export class SessionSlotManager {
           icon: 'tool', tone: 'warning',
         };
       }
+      if (idx === 1) return { type: 'preset', preset: OPEN_PRESET };
       if (session?.stopRequested) {
-        return idx === 1
+        return idx === 2
           ? { type: 'status', label: 'STOPPING', subtitle: 'at next tool', icon: 'tool', tone: 'warning' }
           : { type: 'empty' };
       }
+      if (idx === 2 && session?.agentType === 'claude-code') return { type: 'preset', preset: GO_ON_PRESET };
       // No queued task or model-looking buttons mid-turn. PROCESSING stays
       // glanceable and only STOP is actionable; review remains an inert
       // status badge.
       const cells: SessionSlotConfig[] = [];
       const reviewBadge = this.reviewBadgeSlotConfig(session);
       if (reviewBadge) cells.push(reviewBadge);
-      const cellIdx = idx - 1;
+      const cellIdx = idx - 3;
       return cells[cellIdx] ?? { type: 'empty' };
     }
     // Idle observed.
@@ -1129,12 +1138,10 @@ export class SessionSlotManager {
     // independent review stays live — and so does voice, because the daemon
     // delivers a dictated prompt by typing into the owning terminal
     // (injectObservedText), the same ladder a board's PTT rides.
-    if (idx === 0) return this.reviewSlotConfig(session);
-    if (idx === 1) {
-      return { type: 'preset', preset: buildVoicePreset(this._voiceState) };
-    }
+    if (idx === 0) return { type: 'preset', preset: OPEN_PRESET };
+    if (idx === 1) return this.reviewSlotConfig(session);
     if (idx === 2) {
-      return { type: 'status', label: 'OBSERVED', subtitle: 'control in terminal', icon: 'ready', tone: 'info' };
+      return { type: 'preset', preset: buildVoicePreset(this._voiceState) };
     }
     return this.idleStatusCard(session, idx - 3, false, false);
   }
