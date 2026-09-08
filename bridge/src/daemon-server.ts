@@ -59,7 +59,7 @@ import {
   notePermissionPromptShown, noteToolEnd, steeringSnapshot,
 } from './observed-steering.js';
 import { resolveSessionIdPrefix } from './session-id-resolve.js';
-import { injectObservedSelection, injectObservedText } from './observed-inject.js';
+import { injectObservedSelection, injectObservedText, postCmdDigitToApp, axClickTitleInApp } from './observed-inject.js';
 import { HookRemoteClaudeSessions, isRemoteClaudeHook } from './hook-remote-claude-sessions.js';
 import { execFile as execFileCb } from 'node:child_process';
 
@@ -67,6 +67,52 @@ import { execFile as execFileCb } from 'node:child_process';
  *  Claude desktop chats get a deep link straight to the conversation; anything
  *  else just activates its host app. `open` only — no osascript, so no
  *  Automation prompt for the daemon process. */
+/** MASH fork: the Claude desktop sidebar order (1-based Cmd+N position) for an
+ *  app session id. Rule under test: non-archived chats by most recent activity. */
+export function claudeSidebarIndex(appSessionId: string): number | undefined {
+  const root = join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions');
+  const rows: Array<{ id: string; t: number }> = [];
+  const stack = [root];
+  while (stack.length) {
+    const dir = stack.pop()!;
+    let entries: string[] = [];
+    try { entries = readdirSync(dir); } catch { continue; }
+    for (const name of entries) {
+      const full = join(dir, name);
+      try {
+        if (statSync(full).isDirectory()) { stack.push(full); continue; }
+        if (!name.startsWith('local_') || !name.endsWith('.json')) continue;
+        const j = JSON.parse(readFileSync(full, 'utf8')) as { sessionId?: string; isArchived?: boolean; lastActivityAt?: number };
+        if (j.isArchived || typeof j.sessionId !== 'string') continue;
+        rows.push({ id: j.sessionId, t: Number(j.lastActivityAt ?? 0) });
+      } catch { /* skip */ }
+    }
+  }
+  rows.sort((x, y) => y.t - x.t);
+  const idx = rows.findIndex((r) => r.id === appSessionId);
+  return idx >= 0 ? idx + 1 : undefined;
+}
+
+function appSessionForCliSession(cliSessionId: string): { id: string; title?: string } | undefined {
+  const root = join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions');
+  const stack = [root];
+  while (stack.length) {
+    const dir = stack.pop()!;
+    let entries: string[] = [];
+    try { entries = readdirSync(dir); } catch { continue; }
+    for (const name of entries) {
+      const full = join(dir, name);
+      try {
+        if (statSync(full).isDirectory()) { stack.push(full); continue; }
+        if (!name.startsWith('local_') || !name.endsWith('.json')) continue;
+        const j = JSON.parse(readFileSync(full, 'utf8')) as { sessionId?: string; cliSessionId?: string; title?: string };
+        if (j.cliSessionId === cliSessionId && typeof j.sessionId === 'string') return { id: j.sessionId, title: j.title };
+      } catch { /* skip */ }
+    }
+  }
+  return undefined;
+}
+
 function appSessionIdForCliSession(cliSessionId: string): string | undefined {
   const root = join(homedir(), 'Library', 'Application Support', 'Claude', 'claude-code-sessions');
   const stack = [root];
@@ -102,9 +148,19 @@ async function openSessionWindow(sessionId: string, obs?: { tty?: string; appNam
     // The Claude desktop app's deep link wants ITS session id (local_…), not
     // the CLI session uuid. The app keeps one JSON per session under
     // ~/Library/Application Support/Claude/claude-code-sessions/ with both ids.
-    const appId = appSessionIdForCliSession(uuid);
+    const appSess = appSessionForCliSession(uuid);
+    const appId = appSess?.id;
     if (appId) await run([`claude://code/continue?session=${encodeURIComponent(appId)}&source=agentdeck`]);
     await run(['-a', 'Claude']);
+    // The continue deep link is feature-gated off for this account: find the
+    // chat's row in the sidebar by title through the accessibility tree and
+    // press it (order-independent, unlike Cmd+N).
+    log(`[mash] open_session claude appId=${appId ?? '-'} title=${appSess?.title ?? '-'}`);
+    if (appSess?.title) {
+      await new Promise((r) => setTimeout(r, 400));
+      const res = await axClickTitleInApp(['com.anthropic.claudefordesktop', 'com.anthropic.claude'], appSess.title);
+      log(`[mash] open_session ax-click → ${res ?? 'failed'}`);
+    }
     return;
   }
   if (sessionId.startsWith('observed:codex')) {
@@ -5637,6 +5693,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // working-tree delta with an independent model. Valid for every session
     // type — no agent control involved. Result: WS events + badge fields +
     // HTML report opened in the browser (this daemon's "popup" tier).
+    // MASH fork (probe): post Cmd+<n> to the Claude app — used to verify the sidebar order rule.
+    if ((cmd.type as string) === 'mash_ax_click') {
+      void axClickTitleInApp(['com.anthropic.claudefordesktop', 'com.anthropic.claude'], String((cmd as any).title ?? ''))
+        .then((r) => log(`[mash] probe ax-click "${String((cmd as any).title ?? '')}" → ${r ?? 'failed'}`));
+      return;
+    }
+    if ((cmd.type as string) === 'mash_cmd_digit') {
+      const n = Number((cmd as any).n);
+      void postCmdDigitToApp({ bundleIds: ['com.anthropic.claudefordesktop', 'com.anthropic.claude'], names: ['Claude'] }, n)
+        .then((r) => log(`[mash] probe Cmd+${n} → ${r ?? 'failed'}`));
+      return;
+    }
     // MASH fork: OPEN key — raise the window/chat that hosts a session.
     if ((cmd.type as string) === 'open_session') {
       const sessionId = resolveDeviceSessionId((cmd as any).sessionId);

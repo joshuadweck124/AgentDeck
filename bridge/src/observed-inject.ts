@@ -336,6 +336,83 @@ export function buildAppKeysScript(appName: string, downs: number, submits = 1):
   ].join('\n');
 }
 
+
+/** MASH fork: post Cmd+<digit> to an app (Claude desktop switches to the Nth
+ *  sidebar chat). Same CGEventPostToPid path as buildPostKeysScript, so the
+ *  app need not be frontmost and the daemon process needs Accessibility. */
+const DIGIT_KEYCODES: Record<number, number> = { 1: 18, 2: 19, 3: 20, 4: 21, 5: 23, 6: 22, 7: 26, 8: 28, 9: 25 };
+export function buildCmdDigitScript(match: { bundleIds?: string[]; names?: string[] }, digit: number): string {
+  const code = DIGIT_KEYCODES[digit];
+  const bundles = JSON.stringify(match.bundleIds ?? []);
+  const names = JSON.stringify(match.names ?? []);
+  return [
+    "ObjC.import('ApplicationServices'); ObjC.import('AppKit');",
+    `const wantBundles = ${bundles}; const wantNames = ${names};`,
+    'function findPid() {',
+    '  const apps = $.NSWorkspace.sharedWorkspace.runningApplications;',
+    '  for (let i = 0; i < apps.count; i++) {',
+    '    const a = apps.objectAtIndex(i);',
+    '    const b = ObjC.unwrap(a.bundleIdentifier);',
+    '    if (b && wantBundles.indexOf(b) >= 0) return a.processIdentifier;',
+    '  }',
+    '  for (let i = 0; i < apps.count; i++) {',
+    '    const a = apps.objectAtIndex(i);',
+    '    const n = ObjC.unwrap(a.localizedName);',
+    '    if (n && wantNames.indexOf(n) >= 0) return a.processIdentifier;',
+    '  }',
+    '  return -1;',
+    '}',
+    'const pid = findPid();',
+    'if (pid < 0) { "notfound" } else {',
+    '  delay(0.30);',
+    `  const d = $.CGEventCreateKeyboardEvent($(), ${code}, true);`,
+    `  const u = $.CGEventCreateKeyboardEvent($(), ${code}, false);`,
+    '  $.CGEventSetFlags(d, $.kCGEventFlagMaskCommand);',
+    '  $.CGEventSetFlags(u, $.kCGEventFlagMaskCommand);',
+    '  $.CGEventPostToPid(pid, d); delay(0.05); $.CGEventPostToPid(pid, u);',
+    '  "ok"',
+    '}',
+  ].join('\n');
+}
+export async function postCmdDigitToApp(match: { bundleIds?: string[]; names?: string[] }, digit: number): Promise<string | null> {
+  if (!DIGIT_KEYCODES[digit]) return null;
+  return runJxa(buildCmdDigitScript(match, digit));
+}
+
+
+/** MASH fork: click the sidebar row whose accessibility title/description
+ *  contains `title` inside an app, via the AX API directly (needs only the
+ *  Accessibility grant the daemon already has — no System Events/Automation). */
+export function buildAxClickTitleScript(bundleIds: string[], title: string): string {
+  const bundles = JSON.stringify(bundleIds);
+  const want = JSON.stringify(title);
+  const lines = [
+    "ObjC.import('ApplicationServices'); ObjC.import('AppKit'); ObjC.import('Foundation');",
+    `const wantBundles = ${bundles}; const TITLE = ${want};`,
+    "function findPid(){ const apps=$.NSWorkspace.sharedWorkspace.runningApplications; for(let i=0;i<apps.count;i++){const a=apps.objectAtIndex(i); const b=ObjC.unwrap(a.bundleIdentifier); if(b && wantBundles.indexOf(b)>=0) return a.processIdentifier;} return -1; }",
+    "const pid=findPid(); if(pid<0) throw new Error('app not running');",
+    "const app=$.AXUIElementCreateApplication(pid);",
+    "$.AXUIElementSetAttributeValue(app, $('AXManualAccessibility'), $.kCFBooleanTrue);",
+    "delay(1.2);",
+    "function attr(el,name){ const ref=Ref(); const err=$.AXUIElementCopyAttributeValue(el,$(name),ref); if(err!==0||!ref[0]) return null; return ref[0]; }",
+    "function str(v){ try{ const o=ObjC.castRefToObject(v); const s=ObjC.unwrap(o); return typeof s==='string'?s:(s&&s.toString?String(s):null);}catch(e){return null;} }",
+    "function children(el){ const v=attr(el,'AXChildren'); if(!v) return []; const arr=ObjC.castRefToObject(v); const n=arr.count; const out=[]; for(let i=0;i<n;i++) out.push(arr.objectAtIndex(i)); return out; }",
+    "let visited=0, hit=null, seen=[];",
+    "function dfs(el,depth){ if(hit||depth>80||visited>60000) return; visited++; for(const a of ['AXTitle','AXDescription','AXValue']){ const s=str(attr(el,a)); if(s){ if(TITLE!=='__dump__' && s.indexOf(TITLE)>=0){ hit={el, attr:a, role:str(attr(el,'AXRole'))}; return; } if(TITLE==='__dump__' && s.length>2 && s.length<80 && seen.length<80 && seen.indexOf(s)<0) seen.push(s); } } for(const c of children(el)) { dfs(c,depth+1); if(hit) return; } }",
+    "dfs(app,0);",
+    "let out;",
+    "if(TITLE==='__dump__'){ out='visited='+visited+' '+JSON.stringify(seen); }",
+    "else if(TITLE==='__sidebar__'){ let sb=null; (function f(el,d){ if(sb||d>30) return; if(str(attr(el,'AXDescription'))==='Sidebar'||str(attr(el,'AXTitle'))==='Sidebar'){ sb=el; return; } for(const c of children(el)) f(c,d+1); })(app,0); if(!sb){ out='no sidebar element'; } else { const rows=[]; (function g(el,d){ if(d>25||rows.length>60) return; const r=str(attr(el,'AXRole')); const t=str(attr(el,'AXTitle'))||str(attr(el,'AXDescription'))||str(attr(el,'AXValue'))||''; rows.push(d+':'+r+':'+t.slice(0,40)); for(const c of children(el)) g(c,d+1); })(sb,0); out='sidebar subtree '+JSON.stringify(rows); } }",
+    "else if(!hit){ out='notfound visited='+visited; }",
+    "else { let target=hit.el; let res=$.AXUIElementPerformAction(target,$('AXPress')); for(let i=0;i<4 && res!==0;i++){ const p=attr(target,'AXParent'); if(!p) break; target=p; res=$.AXUIElementPerformAction(target,$('AXPress')); } out='found role='+hit.role+' via '+hit.attr+' press='+res+' visited='+visited; }",
+    "out",
+  ];
+  return lines.join('\n');
+}
+export async function axClickTitleInApp(bundleIds: string[], title: string): Promise<string | null> {
+  return runJxa(buildAxClickTitleScript(bundleIds, title), 20_000);
+}
+
 async function runJxa(script: string, timeoutMs = 8_000): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync('osascript', ['-l', 'JavaScript', '-e', script],
