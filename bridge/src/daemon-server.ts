@@ -60,6 +60,7 @@ import {
 } from './observed-steering.js';
 import { resolveSessionIdPrefix } from './session-id-resolve.js';
 import { injectObservedSelection, injectObservedText } from './observed-inject.js';
+import { HookRemoteClaudeSessions, isRemoteClaudeHook } from './hook-remote-claude-sessions.js';
 import { execFile as execFileCb } from 'node:child_process';
 
 /** MASH fork: bring the window that hosts a session to the front.
@@ -1624,6 +1625,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Codex sessions known only from `codex_*` hooks — the backstop for when the
   // process scan can't see one (lsof timeout, no rollout held open).
   const hookCodexSessions = new HookCodexSessions();
+  // MASH fork: Claude sessions on dev1 (hooks via SSH tunnel, no local process/transcript).
+  const hookRemoteClaudeSessions = new HookRemoteClaudeSessions();
   const hookOpenCodeSessions = new HookOpenCodeSessions();
   // Declared before the HTTP server: the PreToolUse route reads it to decide
   // whether this daemon can type into a session's terminal, and hooks start
@@ -3045,6 +3048,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // subagent lifecycle never drives the parent row, and kept independent
         // of the state machine: this only decides whether a Codex the process
         // scan can't see still has a session. See bridge/src/hook-codex-sessions.ts.
+        // MASH fork: remote (dev1) Claude sessions — transcript not on this machine.
+        if (!eventName.startsWith('codex_') && !eventName.startsWith('opencode_')) {
+          const remotePayload = {
+            sessionId: typeof json.session_id === 'string' ? json.session_id : undefined,
+            cwd: earlyHookCwd || undefined,
+            transcriptPath: typeof json.transcript_path === 'string' ? json.transcript_path : undefined,
+            toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
+          };
+          if (isRemoteClaudeHook(remotePayload)) hookRemoteClaudeSessions.note(eventName, remotePayload);
+        }
         if (eventName.startsWith('codex_')) {
           hookCodexSessions.note(eventName, {
             sessionId: typeof json.session_id === 'string' ? json.session_id : undefined,
@@ -4718,6 +4731,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // worth a broadcast of its own.
   codexOtel.onChanged = () => core.maybeBroadcastSessionsList();
   hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
+  hookRemoteClaudeSessions.onChanged = () => core.maybeBroadcastSessionsList();
   hookOpenCodeSessions.onChanged = () => core.maybeBroadcastSessionsList();
 
   // ===== Gateway adapter lifecycle =====
@@ -4738,7 +4752,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // observer. See bridge/src/codex-otel.ts.
     const observed = applyAwaitingOverlayToObserved(
       hookOpenCodeSessions.applyTo(
-        hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions))),
+        hookRemoteClaudeSessions.applyTo(hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions)))),
       ),
     )
       .map((s) => {
