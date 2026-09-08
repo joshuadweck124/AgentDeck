@@ -21,7 +21,7 @@ const TAG = 'Launcher';
 export const DEFAULT_TARGETS: Record<string, string> = {
   claude: 'app:Claude|url:https://claude.ai',
   codex: 'app:Codex|url:https://chatgpt.com/codex/cloud',
-  mash: 'url:https://mash-reach-app.vercel.app',
+  mash: 'app:MASH|url:https://mash-reach-app.vercel.app',
 };
 
 export const AGENT_LABELS: Record<string, string> = {
