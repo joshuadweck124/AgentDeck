@@ -71,6 +71,7 @@ async function openSessionWindow(sessionId: string, obs?: { tty?: string; appNam
     execFileCb('open', args, { timeout: 5_000 }, () => resolve());
   });
   const app = (obs?.appName ?? '').toLowerCase();
+  log(`[mash] open_session ${sessionId} app=${app || '-'} tty=${obs?.tty ?? '-'}`);
   if (sessionId.startsWith('observed:claude:')) {
     const uuid = sessionId.slice('observed:claude:'.length);
     if (obs?.tty && app !== 'claude') {
