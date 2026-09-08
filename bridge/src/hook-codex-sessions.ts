@@ -27,13 +27,13 @@ import {
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
 
 /** Reaped this long after the turn-ending hook — Swift's `codexPostTerminalTTL`. */
-const POST_TERMINAL_TTL_MS = 60_000;
+const POST_TERMINAL_TTL_MS = 12 * 60 * 60_000; // MASH fork: keep finished hook-only (dev1) Codex rows all day; the today-filter hides them after midnight
 /**
  * Reaped this long after ANY hook when no terminal event arrived. A session
  * killed mid-turn (SIGKILL, closed laptop) fires no `codex_stop`, and without
  * this its creature would sit "processing" forever.
  */
-const SILENT_TTL_MS = 30 * 60_000;
+const SILENT_TTL_MS = 12 * 60 * 60_000;
 
 /** Hook events that may create a row. */
 const OPENING_EVENTS = new Set(['codex_session_start', 'codex_user_prompt_submit']);
@@ -104,6 +104,11 @@ export class HookCodexSessions {
       if (this.terminated.has(sessionId)) return false;
     }
 
+    // MASH fork: finished rows now live for hours, so a trailing tool callback
+    // after the stop must not flip them back to processing.
+    if (existing?.terminalAt !== undefined && !OPENING_EVENTS.has(event) && !TERMINAL_EVENTS.has(event)) {
+      return false;
+    }
     const session: HookCodexSession = existing ?? {
       sessionId,
       projectName: '',

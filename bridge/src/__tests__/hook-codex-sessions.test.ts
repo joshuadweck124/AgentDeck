@@ -106,15 +106,16 @@ describe('HookCodexSessions', () => {
     const hooks = new HookCodexSessions();
     hooks.note('codex_user_prompt_submit', { sessionId: SID, cwd: CWD }, 1_000);
     hooks.note('codex_stop', { sessionId: SID }, 2_000);
-    expect(hooks.applyTo([], 2_000 + 59_000)).toHaveLength(1);
-    expect(hooks.applyTo([], 2_000 + 61_000)).toHaveLength(0);
+    // MASH fork: finished rows stay listed for 12h (the deck's today-filter hides them).
+    expect(hooks.applyTo([], 2_000 + 11 * 60 * 60_000)).toHaveLength(1);
+    expect(hooks.applyTo([], 2_000 + 13 * 60 * 60_000)).toHaveLength(0);
 
     // Killed mid-turn: no terminal hook ever arrives, so only the silence TTL
     // can retire it — otherwise the creature stays "processing" forever.
     const killed = new HookCodexSessions();
     killed.note('codex_user_prompt_submit', { sessionId: SID, cwd: CWD }, 1_000);
-    expect(killed.applyTo([], 1_000 + 29 * 60_000)).toHaveLength(1);
-    expect(killed.applyTo([], 1_000 + 31 * 60_000)).toHaveLength(0);
+    expect(killed.applyTo([], 1_000 + 11 * 60 * 60_000)).toHaveLength(1);
+    expect(killed.applyTo([], 1_000 + 13 * 60 * 60_000)).toHaveLength(0);
   });
 
   it('lets a follow-up prompt revive a finished session', () => {
@@ -137,10 +138,11 @@ describe('HookCodexSessions', () => {
     const hooks = new HookCodexSessions();
     hooks.note('codex_session_start', { sessionId: SID, cwd: CWD }, 1_000);
     hooks.note('codex_stop', { sessionId: SID }, 2_000);
-    // Row reaped 60 s later; a late companion-task callback arrives after that.
-    expect(hooks.applyTo([], 2_000 + 61_000)).toHaveLength(0);
+    // MASH fork: the finished row stays listed (idle); a late companion-task
+    // callback must not flip it back to processing.
+    expect(hooks.applyTo([], 2_000 + 61_000)[0]).toMatchObject({ state: 'idle' });
     hooks.note('codex_tool_end', { sessionId: SID, toolName: 'exec' }, 2_000 + 62_000);
-    expect(hooks.applyTo([], 2_000 + 63_000)).toHaveLength(0);
+    expect(hooks.applyTo([], 2_000 + 63_000)[0]).toMatchObject({ state: 'idle' });
 
     // …but the same session prompted again is a genuine re-engagement.
     hooks.note('codex_user_prompt_submit', { sessionId: SID }, 2_000 + 64_000);
