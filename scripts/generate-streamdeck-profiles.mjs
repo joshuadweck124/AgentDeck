@@ -86,11 +86,11 @@ function keypadController(p) {
   }
   return { Actions, Type: 'Keypad' };
 }
-function encoderController(p) {
+function encoderController(p, idPrefix = 'enc') {
   const Actions = {};
   ENCODER_ROLES.forEach((role, i) => {
     Actions[`${i},0`] = {
-      ActionID: id(p.name, `enc:${i}`), LinkedTitle: true, Name: role.name,
+      ActionID: id(p.name, `${idPrefix}:${i}`), LinkedTitle: true, Name: role.name,
       Plugin: plugin(), Resources: null, Settings: {}, State: 0, States: [{}], UUID: role.uuid,
     };
   });
@@ -129,7 +129,9 @@ function appsPage(p) {
     };
   });
   const controllers = [{ Actions, Type: 'Keypad' }];
-  if (p.dials) controllers.push(encoderController(p));
+  // Encoders need their own ActionIDs on this page — reusing page 1's makes the
+  // Stream Deck app flip between the pages every few seconds.
+  if (p.dials) controllers.push(encoderController(p, 'apps:enc'));
   return { Controllers: controllers, Icon: '', Name: 'MASH apps' };
 }
 
