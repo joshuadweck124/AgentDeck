@@ -4839,6 +4839,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         hookRemoteClaudeSessions.applyTo(hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions)))),
       ),
     )
+      // MASH fork: only today's sessions on the deck. Anything idle whose last
+      // activity is before local midnight is hidden (it is still running, so it
+      // comes back the moment it does something).
+      .filter((s) => {
+        if (s.state !== 'idle') return true;
+        const last = (s as { lastActivityAt?: number }).lastActivityAt;
+        if (!last) return true;
+        const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+        return last >= midnight.getTime();
+      })
       .map((s) => {
         // Steering feedback for observed Claude sessions: devices render
         // "stopping at next tool" / queued-directive badges from these.
