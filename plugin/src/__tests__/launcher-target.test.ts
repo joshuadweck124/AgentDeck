@@ -112,8 +112,8 @@ describe('launcher: shipped defaults', () => {
 describe('launcher: entry list and rolling', () => {
   it('lists every agent in a stable order', () => {
     const list = buildEntries();
-    expect(list.map(e => e.agent)).toEqual(['claude', 'codex', 'openclaw']);
-    expect(list.map(e => e.label)).toEqual(['Claude', 'Codex', 'OpenClaw']);
+    expect(list.map(e => e.agent)).toEqual(['claude', 'codex', 'mash']);
+    expect(list.map(e => e.label)).toEqual(['Claude', 'Codex', 'MASH']);
   });
 
   it('honours a per-agent override from the Property Inspector', () => {

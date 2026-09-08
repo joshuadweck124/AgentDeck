@@ -42,7 +42,7 @@ interface LauncherSettings {
   [key: string]: JsonValue;
   claudeTarget?: string;
   codexTarget?: string;
-  openclawTarget?: string;
+  mashTarget?: string;
 }
 
 let settings: LauncherSettings = {};

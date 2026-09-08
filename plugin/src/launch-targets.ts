@@ -6,7 +6,6 @@
  * it is effectively untestable. This is the part with real branching, so it
  * lives here where it can be covered directly.
  */
-import { OPENCLAW_GATEWAY_PORT } from '@agentdeck/shared';
 import { openApp, openOrFocusBrowserTab } from './system/index.js';
 import { dlog } from './log.js';
 
@@ -22,13 +21,13 @@ const TAG = 'Launcher';
 export const DEFAULT_TARGETS: Record<string, string> = {
   claude: 'app:Claude|url:https://claude.ai',
   codex: 'app:Codex|url:https://chatgpt.com/codex/cloud',
-  openclaw: `url:http://127.0.0.1:${OPENCLAW_GATEWAY_PORT}`,
+  mash: 'url:https://mash-reach-app.vercel.app',
 };
 
 export const AGENT_LABELS: Record<string, string> = {
   claude: 'Claude',
   codex: 'Codex',
-  openclaw: 'OpenClaw',
+  mash: 'MASH',
 };
 
 export interface LaunchEntry {
