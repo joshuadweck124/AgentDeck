@@ -107,11 +107,15 @@ async function openSessionWindow(sessionId: string, obs?: { tty?: string; appNam
     await run(['-a', 'Claude']);
     return;
   }
-  if (sessionId.startsWith('observed:codex:')) {
+  if (sessionId.startsWith('observed:codex')) {
     if (obs?.tty && app !== 'chatgpt') {
       await run(['-a', app === 'iterm2' ? 'iTerm' : 'Terminal']);
       return;
     }
+    // ChatGPT app: codex://threads/<thread id> jumps to that conversation. The
+    // observed session id IS the thread id (rollout uuid).
+    const threadId = sessionId.replace(/^observed:codex(?:-app)?:/, '');
+    if (threadId) await run([`codex://threads/${encodeURIComponent(threadId)}`]);
     await run(['-a', 'ChatGPT']);
     return;
   }
