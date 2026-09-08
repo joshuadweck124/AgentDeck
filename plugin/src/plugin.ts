@@ -32,6 +32,7 @@ import {
   updateUsageLimitButtons,
   refreshUsageLimitButtons,
 } from './actions/usage-limit-button.js';
+import { NavKeyAction } from './actions/nav-key.js';
 import {
   LauncherDialAction,
   initLauncherDial,
@@ -219,6 +220,17 @@ initSessionSlots((result) => {
         // review_status/sessions_list round trip (which can lag many seconds
         // while a judge is busy). Cleared on refusal via review_status error.
         markSessionReviewPending(focused.id);
+      }
+      break;
+    }
+
+    case 'open-apps': {
+      // MASH fork: MORE key → page 2 (apps) of the bundled SD+ profile.
+      for (const device of streamDeck.devices) {
+        if ((device as any).type === 7) {
+          void streamDeck.profiles.switchToProfile(String(device.id), 'agentdeck-mash', 1)
+            .catch((e) => dlog('Plugin', `open-apps switch failed: ${(e as Error).message}`));
+        }
       }
       break;
     }
@@ -520,6 +532,7 @@ streamDeck.actions.registerAction(new UtilityDialAction());
 streamDeck.actions.registerAction(new UsageDialAction());
 streamDeck.actions.registerAction(new SessionSlotButtonAction());
 streamDeck.actions.registerAction(new UsageLimitButtonAction());
+streamDeck.actions.registerAction(new NavKeyAction());
 
 // ---- Slot Map Reporting (Phase A7) ----
 
@@ -630,7 +643,7 @@ streamDeck.connect().then(async () => {
   for (const device of streamDeck.devices) {
     const type = (device as any).type as number;
     const profile = type === 7
-      ? 'agentdeck-sdplus'
+      ? 'agentdeck-mash'
       : type === 13
         ? 'agentdeck-sdplusxl'
         : type === 2

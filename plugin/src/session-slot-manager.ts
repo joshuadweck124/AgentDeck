@@ -58,7 +58,7 @@ export interface PresetAction {
 }
 
 export interface SessionSlotConfig {
-  type: 'session' | 'back' | 'info' | 'status' | 'option' | 'esc' | 'stop' | 'next-page' | 'preset' | 'usage' | 'usage-page' | 'empty';
+  type: 'session' | 'back' | 'info' | 'status' | 'option' | 'esc' | 'stop' | 'next-page' | 'preset' | 'usage' | 'usage-page' | 'more' | 'empty';
   session?: SessionInfo;
   option?: PromptOption;
   optionIndex?: number;
@@ -621,7 +621,7 @@ export class SessionSlotManager {
 
   /** Handle button press. Returns action to take. */
   handleSlotPress(slot: number, layout?: DeckLayout): {
-    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'switch-model' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'none';
+    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'switch-model' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'open-apps' | 'none';
     sessionId?: string;
     sessionPort?: number;
     optionIndex?: number;
@@ -684,6 +684,9 @@ export class SessionSlotManager {
       case 'next-page':
         return { action: 'next-page' };
 
+      case 'more':
+        return { action: 'open-apps' };
+
       case 'usage':
         return { action: 'refresh-usage' };
 
@@ -725,20 +728,26 @@ export class SessionSlotManager {
   // ---- Internal helpers ----
 
   /** Session-fillable keys per page = grid minus pinned usage tiles, minus NEXT→ when paginating. */
+  /** MASH fork: on the Stream Deck + the top-left key is a fixed MORE → apps
+   *  page key, so one list slot is never a session. */
+  private moreReserve(layout: DeckLayout): number {
+    return isPlusFamily(layout.family) ? 1 : 0;
+  }
+
   private listSessionsPerPage(layout: DeckLayout, totalSessions: number): number {
-    const cap = Math.max(1, layout.keyCount - this.usageReserve(layout));
+    const cap = Math.max(1, layout.keyCount - this.usageReserve(layout) - this.moreReserve(layout));
     return totalSessions > cap ? Math.max(1, cap - 1) : cap;
   }
 
   private totalPages(layout: DeckLayout = DEFAULT_LAYOUT): number {
     const count = this._sessions.length;
-    const cap = Math.max(1, layout.keyCount - this.usageReserve(layout));
+    const cap = Math.max(1, layout.keyCount - this.usageReserve(layout) - this.moreReserve(layout));
     if (count <= cap) return 1;
     return Math.ceil(count / this.listSessionsPerPage(layout, count));
   }
 
   private needsPagination(layout: DeckLayout): boolean {
-    return this._sessions.length > Math.max(1, layout.keyCount - this.usageReserve(layout));
+    return this._sessions.length > Math.max(1, layout.keyCount - this.usageReserve(layout) - this.moreReserve(layout));
   }
 
   private isAwaitingDetailState(): boolean {
@@ -792,6 +801,13 @@ export class SessionSlotManager {
       }
     }
 
+    const moreReserve = this.moreReserve(layout);
+    if (moreReserve > 0 && slot === 0) {
+      return { type: 'more', label: 'MORE', subtitle: 'APPS' };
+    }
+    // Everything below counts keys after the MORE key.
+    slot -= moreReserve;
+
     if (this._sessions.length === 0) {
       if (slot === 0) {
         return {
@@ -828,7 +844,7 @@ export class SessionSlotManager {
 
     // NEXT→ sits just before the pinned usage tiles (or the last key when no
     // usage is reserved). Sessions fill slots 0..sessionsOnPage-1.
-    const nextSlot = layout.keyCount - 1 - usageReserve;
+    const nextSlot = layout.keyCount - 1 - usageReserve - moreReserve;
     if (needsPage && slot === nextSlot) {
       return { type: 'next-page', label: `${this._currentPage + 1}/${this.totalPages(layout)}` };
     }

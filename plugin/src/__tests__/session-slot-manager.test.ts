@@ -117,19 +117,20 @@ describe('SessionSlotManager detail layout', () => {
     const manager = new SessionSlotManager();
     manager.updateSessions([]);
 
-    expect(manager.getSlotConfig(0, SD_PLUS_LAYOUT)).toMatchObject({
+    expect(manager.getSlotConfig(0, SD_PLUS_LAYOUT)).toMatchObject({ type: 'more', label: 'MORE' });
+    expect(manager.getSlotConfig(1, SD_PLUS_LAYOUT)).toMatchObject({
       type: 'status',
       label: 'HUB READY',
       subtitle: 'CONNECTED',
       icon: 'hub',
     });
-    expect(manager.getSlotConfig(1, SD_PLUS_LAYOUT)).toMatchObject({
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({
       type: 'status',
       label: 'NO SESSION',
       subtitle: 'WAITING',
       icon: 'no-session',
     });
-    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({
+    expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({
       type: 'status',
       label: 'AgentDeck',
       subtitle: 'IDLE',

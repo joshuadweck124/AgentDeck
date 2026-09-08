@@ -42,7 +42,7 @@ const pluginVersion = `${JSON.parse(readFileSync(resolve(root, 'plugin/package.j
 const PROFILES = [
   { name: 'agentdeck-sd',       display: 'AgentDeck SD',     deviceType: 0,  model: '20GAA9902', columns: 5, rows: 3, dials: false },
   { name: 'agentdeck-sdmini',   display: 'AgentDeck SD Mini', deviceType: 1, model: '20GAI9901', columns: 3, rows: 2, dials: false },
-  { name: 'agentdeck-sdplus',   display: 'AgentDeck SD+',    deviceType: 7,  model: '20GBD9901', columns: 4, rows: 2, dials: true },
+  { name: 'agentdeck-mash',     display: 'AgentDeck MASH',  deviceType: 7,  model: '20GBD9901', columns: 4, rows: 2, dials: true, apps: true },
   { name: 'agentdeck-sdxl',     display: 'AgentDeck SD XL',  deviceType: 2,  model: '20GAT9901', columns: 8, rows: 4, dials: false },
   { name: 'agentdeck-sdplusxl', display: 'AgentDeck SD+ XL', deviceType: 13, model: '20GBX9901', columns: 9, rows: 4, dials: true },
 ];
@@ -96,6 +96,43 @@ function encoderController(p) {
   });
   return { Actions, Type: 'Encoder' };
 }
+// MASH fork: page 2 of the SD+ profile — a fixed app launcher grid reached from
+// the MORE key at (0,0) on page 1. (0,0) here is the plugin's nav-key (back to
+// page 1); the rest are stock "Open" actions with icons from
+// plugin/profile-assets/apps/. Edit MASH_APPS to change the grid.
+const MASH_APPS = [
+  { label: 'MASH',     path: '/Applications/MASH.app',          png: 'MASH.png' },
+  { label: 'Claude',   path: '/Applications/Claude.app',        png: 'Claude.png' },
+  { label: 'ChatGPT',  path: '/Applications/ChatGPT.app',       png: 'ChatGPT.png' },
+  { label: 'Slack',    path: '/Applications/Slack.app',         png: 'Slack.png' },
+  { label: 'Chrome',   path: '/Applications/Google Chrome.app', png: 'Google_Chrome.png' },
+  { label: 'Spotify',  path: '/Applications/Spotify.app',       png: 'Spotify.png' },
+  { label: 'WhatsApp', path: '/Applications/WhatsApp.app',      png: 'WhatsApp.png' },
+];
+const APP_ASSETS = resolve(root, 'plugin/profile-assets/apps');
+function appsPage(p) {
+  const Actions = {};
+  Actions['0,0'] = {
+    ActionID: id(p.name, 'apps:back'), LinkedTitle: true, Name: 'Back to Sessions',
+    Plugin: plugin(), Resources: null, Settings: { page: 0 }, State: 0,
+    States: [{ ...KEY_STATE }], UUID: `${PLUGIN_UUID}.nav-key`,
+  };
+  const slots = [];
+  for (let r = 0; r < p.rows; r++) for (let c = 0; c < p.columns; c++) if (!(r === 0 && c === 0)) slots.push(`${c},${r}`);
+  MASH_APPS.forEach((app, i) => {
+    if (i >= slots.length) return;
+    Actions[slots[i]] = {
+      ActionID: id(p.name, `apps:${app.label}`), LinkedTitle: false, Name: 'Open', Resources: null,
+      Settings: { path: JSON.stringify(app.path) }, State: 0,
+      States: [{ ...KEY_STATE, FontSize: 11, ShowTitle: true, Title: app.label, TitleAlignment: 'bottom', Image: `Images/${app.png}` }],
+      UUID: 'com.elgato.streamdeck.system.open',
+    };
+  });
+  const controllers = [{ Actions, Type: 'Keypad' }];
+  if (p.dials) controllers.push(encoderController(p));
+  return { Controllers: controllers, Icon: '', Name: 'MASH apps' };
+}
+
 function populatedPage(p) {
   const controllers = [keypadController(p)];
   if (p.dials) controllers.push(encoderController(p));
@@ -119,7 +156,7 @@ function buildEntries(p) {
   const outerManifest = {
     Device: { Model: p.model, UUID: id(p.name, 'device') },
     Name: p.display,
-    Pages: { Current: '00000000-0000-0000-0000-000000000000', Default: blank.toLowerCase(), Pages: [pop.toLowerCase()] },
+    Pages: { Current: '00000000-0000-0000-0000-000000000000', Default: blank.toLowerCase(), Pages: [pop.toLowerCase(), ...(p.apps ? [id(p.name, 'page-apps').toLowerCase()] : [])] },
     Version: '3.0',
   };
   const base = `Profiles/${outer}.sdProfile`;
@@ -135,6 +172,14 @@ function buildEntries(p) {
     [`${base}/Profiles/${blank}/manifest.json`, JSON.stringify(blankPage(p))],
     [`${base}/Profiles/${pop}/manifest.json`, JSON.stringify(populatedPage(p))],
   ];
+  if (p.apps) {
+    const apps = id(p.name, 'page-apps').toUpperCase();
+    dirs.push(`${base}/Profiles/${apps}/`, `${base}/Profiles/${apps}/Images/`);
+    files.push([`${base}/Profiles/${apps}/manifest.json`, JSON.stringify(appsPage(p))]);
+    for (const app of MASH_APPS) {
+      files.push([`${base}/Profiles/${apps}/Images/${app.png}`, readFileSync(resolve(APP_ASSETS, app.png))]);
+    }
+  }
   return { dirs, files };
 }
 
@@ -157,7 +202,7 @@ function zip(dirs, files) {
   // Entry order: dirs first (as the app writes them), then files.
   const entries = [
     ...dirs.map((name) => ({ name, data: Buffer.alloc(0) })),
-    ...files.map(([name, content]) => ({ name, data: Buffer.from(content, 'utf8') })),
+    ...files.map(([name, content]) => ({ name, data: Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8') })),
   ];
   const DOS_TIME = 0, DOS_DATE = 0x0021; // 1980-01-01, fixed for determinism
   const locals = [];

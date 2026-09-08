@@ -121,6 +121,24 @@
       },
       "PropertyInspectorPath": "ui/launcher-pi.html",
       "UUID": "bound.serendipity.agentdeck.launcher"
+    },
+    {
+      "Icon": "static/imgs/session",
+      "Name": "Back to Sessions",
+      "States": [
+        {
+          "Image": "static/imgs/keys/session",
+          "Name": "Back to Sessions",
+          "TitleAlignment": "middle",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "SupportedInMultiActions": false,
+      "UUID": "bound.serendipity.agentdeck.nav-key",
+      "Tooltip": "MASH fork: jump back to the AgentDeck session grid"
     }
   ],
   "Author": "AgentDeck",
@@ -166,7 +184,7 @@
       "Readonly": false
     },
     {
-      "Name": "agentdeck-sdplus",
+      "Name": "agentdeck-mash",
       "DeviceType": 7,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": false,

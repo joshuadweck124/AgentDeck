@@ -369,6 +369,10 @@ function renderSlotSvg(config: SessionSlotConfig, _slot: number, layout?: DeckLa
     case 'next-page':
       return renderNextPageButton(config.label ?? '');
 
+    // MASH fork: fixed top-left key → apps page.
+    case 'more':
+      return renderStatusReadout({ label: config.label ?? 'MORE', subtitle: config.subtitle ?? 'APPS', tone: 'info' });
+
     case 'usage':
       return renderUsageGauge({
         agent: config.usageAgent ?? 'claude',
