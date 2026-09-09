@@ -400,7 +400,8 @@ import { CARD_FEED_PATH, CARD_OUTBOX_PATH, FONT_PACK_PATH, GLANCE_FRAME_PATH, LE
 import { readFileSync, statSync, writeFileSync, appendFileSync, readdirSync } from 'fs';
 import { readFile, rm } from 'fs/promises';
 import { tmpdir, networkInterfaces, type NetworkInterfaceInfo } from 'os';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import {
   BRIDGE_WS_PORT,
@@ -4293,6 +4294,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // System wake recovery — re-publish mDNS, reconnect devices, refresh usage
   core.onSystemWake(() => {
     log('[daemon] System wake detected — recovering devices');
+    // MASH fork: recover the Stream Deck after wake (see scripts/mash-wake-check.sh).
+    try {
+      const wakeScript = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'mash-wake-check.sh');
+      execFileCb('bash', [wakeScript, String(Math.floor(Date.now() / 1000))], { timeout: 120_000 }, () => {});
+    } catch { /* best effort */ }
     triggerMdnsRecovery();
     handleESP32Wake();
     handlePixooWake();
