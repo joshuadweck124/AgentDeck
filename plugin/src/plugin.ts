@@ -438,7 +438,10 @@ connMgr.on('display_state', (ev: {
   // hide more than it dims — so only "off" blanks; "min" stays lit. Honor
   // `enabled: false` too: the user turned dimming off, and blanking anyway was
   // the previous behavior because this handler never parsed `dim` at all.
-  const dimEnabled = ev.dim?.enabled !== false;
+  // MASH fork: never blank the keys ourselves. The Stream Deck app already
+  // sleeps/wakes the hardware, and a blanked deck that misses the wake edge
+  // looks dead until replugged.
+  const dimEnabled = false;
   const blanks = ev.dim?.mode !== 'min';
   const shouldDim = !ev.displayOn && dimEnabled && blanks;
   dinfo('Plugin', `display_state: displayOn=${ev.displayOn} enabled=${dimEnabled} mode=${ev.dim?.mode ?? 'off'}`);
